@@ -1,6 +1,6 @@
 module Awaits
 
-export @taskgroup, @in, @await, @go, @check
+export @taskgroup, @cancelscope, @in, @go, @await, @check
 
 using MacroTools: postwalk, @capture
 
@@ -36,18 +36,16 @@ struct TaskContext
     cancelables::Vector{Threads.Atomic{Bool}}
 end
 
-TaskContext() = TaskContext(TaskVector([]), [], [])
+function TaskContext()
+    c = Threads.Atomic{Bool}(false)
+    return TaskContext(TaskVector([]), [c], [c])
+end
 
 function newcontext!(ctx::TaskContext)
     c = Threads.Atomic{Bool}(false)
-    newctx = TaskContext(
-        ctx.tasks,
-        copy(ctx.listening),
-        copy(ctx.cancelables),
-    )
     push!(ctx.cancelables, c)
-    push!(newctx.listening, c)
-    return newctx
+
+    return TaskContext(ctx.tasks, push!(copy(ctx.listening), c), [c])
 end
 
 function shouldstop(ctx::TaskContext)
@@ -66,21 +64,42 @@ end
 const ctx_varname = gensym("taskcontext")
 
 macro taskgroup(body)
-    var = esc(ctx_varname)
+    ctx_var = esc(ctx_varname)
+    sync_var = esc(Base.sync_varname)
     quote
-        let $var = TaskContext()
+        let $ctx_var = TaskContext(),
+            $sync_var = $ctx_var.tasks
+
             v = $(esc(body))
-            Base.sync_end($var.tasks)
+            Base.sync_end($ctx_var.tasks)
             v
         end
     end
 end
 
 macro in(ctx, body)
-    var = esc(ctx_varname)
+    ctx_var = esc(ctx_varname)
+    sync_var = esc(Base.sync_varname)
     quote
-        let $var = $(esc(ctx))
+        let $ctx_var = $(esc(ctx)),
+            $sync_var = $ctx_var.tasks
+
             $(esc(body))
+        end
+    end
+end
+
+#=
+"""
+    @cancelscope(body) :: TaskContext
+"""
+=#
+macro cancelscope(body)
+    ctx_var = esc(ctx_varname)
+    quote
+        let $ctx_var = newcontext!($ctx_var)
+            $(esc(body))
+            $ctx_var
         end
     end
 end
@@ -106,27 +125,21 @@ macro await(body)
 end
 
 macro go(body)
-    @gensym ctx
     quote
-        $(esc(ctx)) = newcontext!($(esc(ctx_varname)))
-        task = Threads.@spawn let $(esc(ctx_varname)) = $(esc(ctx))
-            $(esc(substitute_context(ctx, body)))
-        end
-        push!($(esc(ctx)).tasks, task)
-        task
-    end
+        $Threads.@spawn $(substitute_context(ctx_varname, body))
+    end |> esc
 end
 
 macro check()
     quote
-        @check($(esc(ctx_varname)))
-    end
+        @check($ctx_varname)
+    end |> esc
 end
 
 macro check(ctx)
-    var = esc(ctx)
+    ctx_var = esc(ctx)
     quote
-        shouldstop($var) && return Cancelled()
+        shouldstop($ctx_var) && return Cancelled()
     end
 end
 
