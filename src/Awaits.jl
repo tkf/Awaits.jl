@@ -1,5 +1,8 @@
 module Awaits
 
+# Use README as the docstring of the module:
+@doc read(joinpath(dirname(@__DIR__), "README.md"), String) Awaits
+
 export @taskgroup, @cancelscope, @in, @go, @await, @check
 
 using MacroTools: postwalk, @capture

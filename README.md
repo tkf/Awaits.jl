@@ -1,4 +1,4 @@
-# Awaits: [WIP] Structured concurrency for parallelism
+# Awaits: [WIP] Structured concurrency for parallel computing
 
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://tkf.github.io/Awaits.jl/dev)
 [![Build Status](https://travis-ci.com/tkf/Awaits.jl.svg?branch=master)](https://travis-ci.com/tkf/Awaits.jl)
