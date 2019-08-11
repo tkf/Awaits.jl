@@ -71,6 +71,16 @@ function cancel!(ctx::TaskContext)
     end
 end
 
+_copy(ctx::TaskContext) =
+    TaskContext(ctx.tasks, copy(ctx.listening), copy(ctx.cancelables))
+
+_tasks(ctx::TaskContext) =
+    (begin
+         shouldstop(ctx) && cancel!(ctx)
+         task
+     end
+     for task in ctx.tasks)
+
 const ctx_varname = gensym("taskcontext")
 
 """
@@ -87,7 +97,7 @@ macro taskgroup(body)
             $sync_var = $ctx_var.tasks
 
             v = $(esc(body))
-            Base.sync_end($ctx_var.tasks)
+            Base.sync_end(_tasks($ctx_var))
             v
         end
     end
@@ -163,8 +173,7 @@ end
 """
     @go body
 
-Equivalent to `Threads.@spawn` but it lets you pass current context
-(semi-)automatically.
+A wrapper of `Threads.@spawn` that makes cancellation work.
 
 The variable `_` in code like `@go f(_, x, y)` is replaced by the
 current task context.  It must be invoked inside `@taskgroup` or `@in`
@@ -172,7 +181,17 @@ macros.
 """
 macro go(body)
     quote
-        $Threads.@spawn $(substitute_context(ctx_varname, body))
+        # Copy task context to avoid touching `Vector` without a lock.
+        # It means that the `@spawn`ed task will miss future additions
+        # of cancellation tokens in this task.  However, since current
+        # task context and the copied task context share at least one
+        # cancellation token (the root one), the cancellation state
+        # will propagate eventually.
+        let $ctx_varname = $_copy($ctx_varname)
+            $Threads.@spawn $(@__MODULE__).@await begin
+                $(substitute_context(ctx_varname, body))
+            end
+        end
     end |> esc
 end
 

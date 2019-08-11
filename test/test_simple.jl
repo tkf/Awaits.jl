@@ -54,7 +54,13 @@ end
                     push!(results, ("after sleep", id))
                 end
                 if id == 1
-                    @await ErrorException("terminate")  # manually cancel
+                    # Manually cancel only this scope.  Note that
+                    # `@await ErrorException("terminate")` does not
+                    # work because it cancels everything; i.e., the
+                    # error bubbles up until the root `@taskgroup`
+                    # which in turn cancels everything, not just this
+                    # `@cancelscope`.
+                    @go ErrorException("terminate")
                 end
             end
         end
