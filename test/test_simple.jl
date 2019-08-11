@@ -41,27 +41,27 @@ end
     @test sort(collect(results)) == [("before sleep", 1), ("before sleep", 2)]
 end
 
-# Test that errors inside `@cancelscope` do not leak out.
+# Test that cancellation of `@cancelscope` does not leak out.
 @testset "`@cancelscope`" begin
     results = SyncSeq()
 
     function bg(context, id)
         @in context begin
-            @cancelscope begin
+            subctx = @cancelscope begin
                 @go begin
                     push!(results, ("before sleep", id))
                     @await tickingfor(_, 1)
                     push!(results, ("after sleep", id))
                 end
-                if id == 1
-                    # Manually cancel only this scope.  Note that
-                    # `@await ErrorException("terminate")` does not
-                    # work because it cancels everything; i.e., the
-                    # error bubbles up until the root `@taskgroup`
-                    # which in turn cancels everything, not just this
-                    # `@cancelscope`.
-                    @go ErrorException("terminate")
-                end
+            end
+            if id == 1
+                # Manually cancel only this scope:
+                cancel!(subctx)
+                # Note: `@await ErrorException("terminate")` inside
+                # `@cancelscope` does not work because it cancels
+                # everything; i.e., the error bubbles up until the
+                # root `@taskgroup` which in turn cancels everything,
+                # not just this `@cancelscope`.
             end
         end
     end

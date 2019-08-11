@@ -3,7 +3,7 @@ module Awaits
 # Use README as the docstring of the module:
 @doc read(joinpath(dirname(@__DIR__), "README.md"), String) Awaits
 
-export @taskgroup, @cancelscope, @in, @go, @await, @check
+export @taskgroup, @cancelscope, @in, @go, @await, @check, cancel!
 
 using MacroTools: postwalk, @capture
 
@@ -68,6 +68,11 @@ function shouldstop(ctx::TaskContext)
     return false
 end
 
+"""
+    cancel!(context::TaskContext)
+
+Cancel (stop) execution of task `context`.
+"""
 function cancel!(ctx::TaskContext)
     for c in ctx.cancelables
         c[] = true
