@@ -19,7 +19,7 @@ include("preamble.jl")
 end
 
 # Test cancellation on error.
-@testset "immediate cancel" begin
+@testset "cancel on error" begin
     results = SyncSeq()
 
     function bg(context, id)
@@ -29,7 +29,34 @@ end
                 @await tickingfor(_, 1)
                 push!(results, ("after sleep", id))
             end
-            @await ErrorException("terminate")  # manually cancel
+            if id == 1
+                @await ErrorException("terminate")  # "throw" an error
+            end
+        end
+    end
+
+    @taskgroup begin
+        @go bg(_, 1)
+        @go bg(_, 2)
+    end
+
+    @test sort(collect(results)) == [("before sleep", 1), ("before sleep", 2)]
+end
+
+# Test manual cancellation
+@testset "manual cancel" begin
+    results = SyncSeq()
+
+    function bg(context, id)
+        @in context begin
+            @go begin
+                push!(results, ("before sleep", id))
+                @await tickingfor(_, 1)
+                push!(results, ("after sleep", id))
+            end
+            if id == 1
+                cancel!(context)
+            end
         end
     end
 
