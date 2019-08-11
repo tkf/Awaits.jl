@@ -73,10 +73,16 @@ end
 
 const ctx_varname = gensym("taskcontext")
 
+"""
+    @taskgroup(body)
+
+Create a new task context.  This is an extension of the `@sync` block.
+"""
 macro taskgroup(body)
     ctx_var = esc(ctx_varname)
     sync_var = esc(Base.sync_varname)
     quote
+        # TODO: "inherit" old task context when a new context is created
         let $ctx_var = TaskContext(),
             $sync_var = $ctx_var.tasks
 
@@ -87,6 +93,14 @@ macro taskgroup(body)
     end
 end
 
+"""
+    @in context body
+
+Enter into the task `context` so that other macros like `@go` works as
+expected.  This should be used inside a function in which the task
+`context` is passed by a caller (for example, using [`@go f(_)`](@ref
+@go) macro).
+"""
 macro in(ctx, body)
     ctx_var = esc(ctx_varname)
     sync_var = esc(Base.sync_varname)
@@ -99,11 +113,13 @@ macro in(ctx, body)
     end
 end
 
-#=
 """
     @cancelscope(body) :: TaskContext
+
+Create a task context with a new scope of cancellation.  That is to
+say, error in `@await` inside of `@cancelscope` do not cancel tasks
+outside of this scope.
 """
-=#
 macro cancelscope(body)
     ctx_var = esc(ctx_varname)
     quote
@@ -123,6 +139,16 @@ substitute_context(ctx, body) =
         end
     end
 
+"""
+    @await body
+
+Handle an exception returned from `body`.  If `body` evaluates to an
+`Exception`, it cancels all the tasks attached to the current context.
+
+The variable `_` in code like `@await f(_, x, y)` is replaced by the
+current task context.  It must be invoked inside `@taskgroup` or `@in`
+macros.
+"""
 macro await(body)
     quote
         ans = $(esc(substitute_context(ctx_varname, body)))
@@ -134,12 +160,28 @@ macro await(body)
     end
 end
 
+"""
+    @go body
+
+Equivalent to `Threads.@spawn` but it lets you pass current context
+(semi-)automatically.
+
+The variable `_` in code like `@go f(_, x, y)` is replaced by the
+current task context.  It must be invoked inside `@taskgroup` or `@in`
+macros.
+"""
 macro go(body)
     quote
         $Threads.@spawn $(substitute_context(ctx_varname, body))
     end |> esc
 end
 
+"""
+    @check [context]
+
+Check `context` and exit the function (do `return Cancelled()`) if it
+is required.
+"""
 macro check()
     quote
         @check($ctx_varname)
