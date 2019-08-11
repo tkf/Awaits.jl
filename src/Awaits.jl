@@ -15,30 +15,40 @@ function locking(f, l)
     end
 end
 
-struct TaskVector
-    tasks::Vector{Any}
+"""
+    SyncSeq([values])
+
+A minimalistic wrapper of `Vector{Any}` that can be used from multiple
+threads.
+"""
+struct SyncSeq
+    values::Vector{Any}
     lock::Threads.SpinLock
 end
 
-TaskVector(tasks::Vector{Any}) = TaskVector(tasks, Threads.SpinLock())
+SyncSeq() = SyncSeq([])
+SyncSeq(values::Vector{Any}) = SyncSeq(values, Threads.SpinLock())
 
-Base.push!(v::TaskVector, x) = locking(v.lock) do
-    push!(v.tasks, x)
+Base.push!(v::SyncSeq, x) = locking(v.lock) do
+    push!(v.values, x)
 end
 
-Base.iterate(v::TaskVector, i=1) = locking(v.lock) do
-    iterate(v.tasks, i)
+Base.iterate(v::SyncSeq, i=1) = locking(v.lock) do
+    iterate(v.values, i)
 end
+
+# For `collect` in test code:
+Base.IteratorSize(::Type{<:SyncSeq}) = Base.SizeUnknown()
 
 struct TaskContext
-    tasks::TaskVector
+    tasks::SyncSeq
     listening::Vector{Threads.Atomic{Bool}}
     cancelables::Vector{Threads.Atomic{Bool}}
 end
 
 function TaskContext()
     c = Threads.Atomic{Bool}(false)
-    return TaskContext(TaskVector([]), [c], [c])
+    return TaskContext(SyncSeq(), [c], [c])
 end
 
 function newcontext!(ctx::TaskContext)
