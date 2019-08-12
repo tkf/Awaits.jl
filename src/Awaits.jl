@@ -134,9 +134,11 @@ end
 """
     @cancelscope(body) :: TaskContext
 
-Create a task context with a new scope of cancellation.  That is to
-say, error in `@await` inside of `@cancelscope` do not cancel tasks
-outside of this scope.
+Create a task context with a new scope of cancellation.  Tasks
+launched inside a `@cancelscope` can be cancelled independently from
+the tasks outside to this scope.  This scope returns a context object
+that can be used to cancel the task by calling [`cancel!`](@ref) on
+this object.
 """
 macro cancelscope(body)
     ctx_var = esc(ctx_varname)
